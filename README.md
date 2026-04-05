@@ -6,11 +6,15 @@ colorTo: yellow
 sdk: docker
 pinned: false
 license: mit
-short_description: A 3-task real-world EV (Electric Vehicle)
-⚡ Open-EV: Real-World EV Decision-Making RL Environment
-A complete RL-ready simulation suite for Electric Vehicles
+short_description: A 3-task real-world EV (Electric Vehicle) environment
+app_file: app.py
+---
 
-Built for the OpenEV × Meta × Scaler School Hackathon
+# ⚡ Open-EV: Real-World EV Decision-Making RL Environment
+
+A complete RL-ready simulation suite for Electric Vehicles.
+
+Built for the OpenEV × Meta × Scaler School Hackathon.
 
 🛰️ 📌 Overview
 
