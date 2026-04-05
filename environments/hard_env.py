@@ -1,5 +1,5 @@
 import numpy as np
-from .base_env import BaseEVEnv
+from environments.base_ev_model import BaseEVEnv
 
 class HardEVFleetEnv(BaseEVEnv):
     """

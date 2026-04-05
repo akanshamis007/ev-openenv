@@ -1,5 +1,6 @@
 import requests
 import random
+from environments.base_ev_model import BaseEVEnv
 
 BASE = "http://localhost:7860"
 
