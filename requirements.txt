@@ -1,6 +1,3 @@
 fastapi
-uvicorn[standard]
-numpy
-pandas
-pydantic
-python-multipart
+uvicorn
+gradio
