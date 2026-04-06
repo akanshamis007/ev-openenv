@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Open EV RL Environment</title>
+</head>
+<body>
+    <h1>⚡ Open EV RL – HTML GUI</h1>
+
+    <form action="/reset" method="get">
+        <label>Select Environment:</label>
+        <select name="env">
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+        </select>
+        <button type="submit">Reset Environment</button>
+    </form>
+
+    <br/>
+
+    <form action="/step" method="post">
+        <label>Action:</label>
+        <input type="number" name="action" step="0.1" required>
+        <button type="submit">Take Step</button>
+    </form>
+
+    <p>Use the buttons to interact with your RL environment.</p>
+</body>
+</html>
