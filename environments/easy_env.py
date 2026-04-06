@@ -1,7 +1,7 @@
 import numpy as np
 from environments.base_ev_model import BaseEVEnv
 
-class EasyEVRouteEnv(BaseEVEnv):
+class EasyEVEnv(BaseEVEnv):
     """
     Easy Task:
     Predict energy needed to move from A → B with random distance + speed.
