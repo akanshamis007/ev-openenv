@@ -1,19 +1,13 @@
-FROM python:3.9
+FROM python:3.10
 
-RUN useradd -m -u 1000 user
-USER user
+WORKDIR /code
 
-WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
 
-# Copy and install dependencies
-COPY --chown=user requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
 
-# Copy all project files
-COPY --chown=user . .
-
-# Expose port
 EXPOSE 7860
 
-# Start FastAPI with uvicorn
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]
+# Run Streamlit GUI automatically
+CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0"]
