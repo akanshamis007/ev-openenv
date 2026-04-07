@@ -7,7 +7,7 @@ class HardEVEnv(BaseEVModel):
     def __init__(self):
         super().__init__(
             battery_capacity=100,
-            max_speed=90,
+            max_speed=60,
             traffic_factor=0.25,
             total_distance=120
         )
