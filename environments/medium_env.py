@@ -1,40 +1,23 @@
 import numpy as np
-from environments.base_ev_model import BaseEVEnv
+from .base_ev_model import BaseEVModel
 
-class MediumEVRouteEnv(BaseEVEnv):
+class MediumEVEnv(BaseEVModel):
     """
-    Medium Task:
-    EV routing with traffic factor + charging cost.
-    Action: [chosen_speed, chosen_charger_type]
-    Reward: time_penalty + charging_cost_penalty
+    Adds action:
+    0 = drive slow
+    1 = drive medium
+    2 = drive fast
+    3 = stop and charge
     """
-
     def __init__(self):
-        super().__init__()
-        self.reset()
-
-    def reset(self):
-        self.distance = self.rng.uniform(10, 50)
-        self.traffic = self.rng.uniform(0.8, 2.0)      # multiplier
-        self.battery = self.rng.uniform(40, 100)        # %
-        self.observation = np.array([self.distance, self.traffic, self.battery])
-        return self.observation
+        super().__init__(battery_capacity=60, max_speed=90, traffic_factor=0.3)
 
     def step(self, action):
-        speed, charger = action   # charger: 0=slow,1=fast
-        
-        travel_time = self.distance / speed * self.traffic
-        
-        energy_used = 0.25 * self.distance
-        self.battery -= energy_used
+        if action == 3:   # charge
+            self.battery_level = min(self.battery_capacity, self.battery_level + 5)
+            return self._get_obs(), -1, False, {}  # small cost for time
 
-        charge_cost = 5 if charger == 0 else 12
-        
-        reward = -(travel_time + charge_cost)
+        speed_map = {0: 20, 1: 40, 2: 70}
+        speed = speed_map[action]
 
-        done = True
-
-        return self.observation, reward, done, {
-            "travel_time": travel_time,
-            "charge_cost": charge_cost,
-        }
+        return super().step(speed)

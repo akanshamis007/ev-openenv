@@ -1,57 +1,27 @@
 import numpy as np
-from environments.base_ev_model import BaseEVEnv
+from .base_ev_model import BaseEVModel
 
-class HardEVFleetEnv(BaseEVEnv):
+class HardEVEnv(BaseEVModel):
     """
-    Hard Task:
-    Choose route + charging + speed to minimize total cost.
-    Multi-step episode.
+    Hardest version — weather + traffic + battery aging.
+    Action: continuous speed (0–1) scaled to (0–120 km/h)
     """
-
     def __init__(self):
-        super().__init__()
-        self.step_id = 0
-        self.reset()
+        super().__init__(battery_capacity=70, max_speed=120, traffic_factor=0.5)
+        self.weather = 1.0  # 1 = clear,  1.5 = rain, 2 = storm
 
     def reset(self):
-        self.total_reward = 0
-        self.battery = 80
-        self.distance_left = self.rng.uniform(100, 200)
-        self.traffic = self.rng.uniform(0.5, 2.5)
-        self.step_id = 0
-
-        self.observation = np.array([self.distance_left, self.battery, self.traffic])
-        return self.observation
+        self.weather = np.random.choice([1.0, 1.3, 1.6])
+        return super().reset()
 
     def step(self, action):
-        speed, charger = action
+        speed = float(action) * self.max_speed
 
-        # Travel
-        distance_step = speed * 0.2
-        self.distance_left -= distance_step
-        energy_used = 0.3 * distance_step
-        self.battery -= energy_used
-        
-        # Charging
-        if charger == 1:
-            self.battery = min(100, self.battery + 20)
-            cost = 15
-        else:
-            cost = 0
+        # energy penalty from weather
+        self.battery_level -= self.weather * 0.3
 
-        # Reward = negative total time + penalties
-        travel_time = distance_step / speed * self.traffic
-        reward = -(travel_time + cost)
+        obs, reward, done, info = super().step(speed)
 
-        self.total_reward += reward
-        self.step_id += 1
+        reward -= (self.weather - 1) * 5  # weather penalty
 
-        done = (self.distance_left <= 0) or (self.battery <= 0) or (self.step_id >= 20)
-
-        self.observation = np.array([self.distance_left, self.battery, self.traffic])
-
-        return self.observation, reward, done, {
-            "total_reward": self.total_reward,
-            "battery": self.battery,
-            "distance_left": self.distance_left
-        }
+        return obs, reward, done, info
