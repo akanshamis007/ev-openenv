@@ -1,0 +1,17 @@
+name: ev-routing-weather
+env_version: 1
+type: rl
+observation_space:
+  shape: [4]
+  description: [battery, distance_left, traffic_factor, weather_idx]
+action_space:
+  type: continuous
+  low: 0
+  high: 1
+tasks:
+  easy:
+    description: short route, high battery, stable conditions
+  medium:
+    description: moderate distance, medium traffic
+  hard:
+    description: long route + weather regime transitions (clear/cloudy/rain)

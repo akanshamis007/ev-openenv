@@ -1,28 +1,24 @@
 import streamlit as st
-import numpy as np
 from environments.easy_env import EasyEVEnv
 from environments.medium_env import MediumEVEnv
 from environments.hard_env import HardEVEnv
 
-st.title("⚡ EV RL Environment Dashboard")
+st.title("⚡ EV RL Environment")
 
-env_name = st.selectbox("Select Environment", ["easy","medium","hard"])
+choice = st.selectbox("Select Environment", ["easy", "medium", "hard"])
 
-def get_env(name):
-    if name == "easy": return EasyEVEnv()
-    if name == "medium": return MediumEVEnv()
-    if name == "hard": return HardEVEnv()
+if choice == "easy": env = EasyEVEnv()
+if choice == "medium": env = MediumEVEnv()
+if choice == "hard": env = HardEVEnv()
 
-env = get_env(env_name)
-
-if st.button("Reset Environment"):
+if st.button("Reset"):
     obs = env.reset()
-    st.write("Initial Observation:", obs)
+    st.write("Observation:", obs)
 
-action = st.slider("Action (0–1)", 0.0, 1.0, 0.5)
+action = st.slider("Action (Speed Control 0-1)", 0.0, 1.0, 0.5)
 
 if st.button("Step"):
-    obs, reward, done, info = env.step(float(action))
-    st.write("Observation:", obs)
+    obs, reward, done, _ = env.step(action)
+    st.write("Obs:", obs)
     st.write("Reward:", reward)
     st.write("Done:", done)

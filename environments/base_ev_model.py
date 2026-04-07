@@ -1,64 +1,72 @@
 import numpy as np
+import random
 
 class BaseEVModel:
     """
-    Base class for EV RL Environments:
-    - battery_level (0–100 %)
-    - speed (0–120 km/h)
-    - distance_remaining (km)
-    - charging_station_distance (km)
+    Base class for all EV RL environments.
+    Action: float in [0,1] = speed scaling
+    Observation: [battery, distance_left, traffic, weather_mode]
     """
 
-    def __init__(self, battery_capacity=50, max_speed=90, traffic_factor=0.5):
+    WEATHER_MODES = {
+        "clear": 1.00,
+        "cloudy": 1.05,
+        "rain": 1.10,
+    }
+    WEATHER_LIST = ["clear", "cloudy", "rain"]
+
+    def __init__(self, battery_capacity, route_length, traffic_factor):
         self.battery_capacity = battery_capacity
-        self.max_speed = max_speed
+        self.route_length = route_length
         self.traffic_factor = traffic_factor
-        self.reset()
+
+        self.battery = None
+        self.distance_left = None
+        self.weather_mode = None
 
     def reset(self):
-        self.battery_level = self.battery_capacity
-        self.speed = 0
-        self.distance_remaining = 40      # route length (km)
-        self.charging_station_distance = 10  # next station (km)
+        self.battery = self.battery_capacity
+        self.distance_left = self.route_length
+        self.weather_mode = random.choice(self.WEATHER_LIST)
+
         return self._get_obs()
 
-    def _get_obs(self):
-        return np.array([
-            self.battery_level / self.battery_capacity,  # normalized 0–1
-            self.speed / self.max_speed,                 # normalized
-            self.distance_remaining / 40,                # normalized
-            self.charging_station_distance / 10          # normalized
-        ], dtype=np.float32)
+    def step(self, action):
+        action = float(np.clip(action, 0.0, 1.0))
 
-    def _apply_physics(self, action_speed):
-        energy_consumption = action_speed * (1 + self.traffic_factor * 0.5)
-        self.battery_level -= energy_consumption * 0.05
-        self.battery_level = max(0, self.battery_level)
+        # stochastic weather transitions (hard mode uses 0.2 probability)
+        if random.random() < 0.2:
+            self.weather_mode = random.choice(self.WEATHER_LIST)
 
-        self.speed = action_speed
-        distance_covered = self.speed * 0.1
-        self.distance_remaining = max(0, self.distance_remaining - distance_covered)
+        weather_factor = self.WEATHER_MODES[self.weather_mode]
 
-        self.charging_station_distance -= distance_covered
+        # consumption grows with speed * traffic * weather
+        consumption = (0.5 + action) * self.traffic_factor * 5 * weather_factor
 
-        if self.charging_station_distance <= 0:
-            self.charging_station_distance = 10  # new station every 10 km
+        # movement reduces with traffic + weather
+        move = (action * 5) / (self.traffic_factor * weather_factor)
 
-    def step(self, action_speed):
-        self._apply_physics(action_speed)
+        self.battery -= consumption
+        self.distance_left -= move
 
         done = False
         reward = 0
 
-        if self.distance_remaining <= 0:
-            reward += 100   # reached destination
+        if self.distance_left <= 0:
+            reward = 1.0
             done = True
 
-        if self.battery_level <= 0:
-            reward -= 50    # battery empty
+        if self.battery <= 0:
+            reward = -1.0
             done = True
-
-        reward += self.speed * 0.1       # fast progress
-        reward += self.battery_level * 0.01  # conserve battery
 
         return self._get_obs(), reward, done, {}
+
+    def _get_obs(self):
+        weather_idx = self.WEATHER_LIST.index(self.weather_mode)
+        return np.array([
+            round(self.battery, 2),
+            round(self.distance_left, 2),
+            round(self.traffic_factor, 2),
+            weather_idx
+        ], dtype=float)
