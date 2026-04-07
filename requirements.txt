@@ -1,5 +1,6 @@
+gradio>=4.0
 fastapi
 uvicorn
-streamlit
-gymnasium
 numpy
+pillow
+requests
