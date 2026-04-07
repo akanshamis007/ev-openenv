@@ -1,13 +1,17 @@
 FROM python:3.10
 
-WORKDIR /code
+RUN useradd -m -u 1000 user
+USER user
+ENV PATH="/home/user/.local/bin:$PATH"
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+WORKDIR /app
 
-COPY . .
+COPY --chown=user requirements.txt ./requirements.txt
+
+RUN pip install --no-cache-dir --upgrade -r requirements.txt
+
+COPY --chown=user . /app
 
 EXPOSE 7860
 
-# Run Streamlit GUI automatically
-CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "gui.py", "--server.port=7860", "--server.address=0.0.0.0"]

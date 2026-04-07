@@ -1,6 +1,4 @@
-gradio>=4.0
 fastapi
-uvicorn
+uvicorn[standard]
+streamlit
 numpy
-pillow
-requests
