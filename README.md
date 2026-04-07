@@ -1,3 +1,14 @@
+---
+title: EV-RL OpenEnv Benchmark
+emoji: 🚗⚡
+colorFrom: blue
+colorTo: green
+sdk: docker
+sdk_version: "1.0"
+python_version: "3.10"
+app_file: app.py
+pinned: false
+---
 # ⚡ OpenEV-RL: EV Routing Under Stochastic Weather
 
 A reinforcement-learning environment that simulates electric vehicle routing
