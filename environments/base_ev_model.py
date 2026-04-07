@@ -2,71 +2,77 @@ import numpy as np
 import random
 
 class BaseEVModel:
-    """
-    Base class for all EV RL environments.
-    Action: float in [0,1] = speed scaling
-    Observation: [battery, distance_left, traffic, weather_mode]
-    """
-
     WEATHER_MODES = {
-        "clear": 1.00,
-        "cloudy": 1.05,
-        "rain": 1.10,
+        "clear": 1.0,
+        "rain": 0.8,
+        "storm": 0.6
     }
-    WEATHER_LIST = ["clear", "cloudy", "rain"]
 
-    def __init__(self, battery_capacity, route_length, traffic_factor):
+    def __init__(self, battery_capacity=50, max_speed=60, traffic_factor=0.1, total_distance=40):
         self.battery_capacity = battery_capacity
-        self.route_length = route_length
+        self.max_speed = max_speed
         self.traffic_factor = traffic_factor
+        self.total_distance = total_distance
 
-        self.battery = None
-        self.distance_left = None
-        self.weather_mode = None
+        # Guarantee weather_mode is NEVER None
+        self.weather_mode = "clear"
+
+        self.reset()
 
     def reset(self):
-        self.battery = self.battery_capacity
-        self.distance_left = self.route_length
-        self.weather_mode = random.choice(self.WEATHER_LIST)
+        self.battery_level = float(self.battery_capacity)
+        self.distance_remaining = float(self.total_distance)
+        self.speed = 0.0
+
+        # Always pick a valid weather
+        self.weather_mode = random.choice(list(self.WEATHER_MODES.keys()))
 
         return self._get_obs()
 
-    def step(self, action):
-        action = float(np.clip(action, 0.0, 1.0))
-
-        # stochastic weather transitions (hard mode uses 0.2 probability)
-        if random.random() < 0.2:
-            self.weather_mode = random.choice(self.WEATHER_LIST)
-
-        weather_factor = self.WEATHER_MODES[self.weather_mode]
-
-        # consumption grows with speed * traffic * weather
-        consumption = (0.5 + action) * self.traffic_factor * 5 * weather_factor
-
-        # movement reduces with traffic + weather
-        move = (action * 5) / (self.traffic_factor * weather_factor)
-
-        self.battery -= consumption
-        self.distance_left -= move
-
-        done = False
-        reward = 0
-
-        if self.distance_left <= 0:
-            reward = 1.0
-            done = True
-
-        if self.battery <= 0:
-            reward = -1.0
-            done = True
-
-        return self._get_obs(), reward, done, {}
-
     def _get_obs(self):
-        weather_idx = self.WEATHER_LIST.index(self.weather_mode)
-        return np.array([
-            round(self.battery, 2),
-            round(self.distance_left, 2),
-            round(self.traffic_factor, 2),
-            weather_idx
-        ], dtype=float)
+        """Return fully named observation dict."""
+        return {
+            "battery": float(self.battery_level),
+            "distance_remaining": float(self.distance_remaining),
+            "speed": float(self.speed),
+            "weather_mode": self.weather_mode
+        }
+
+    def step(self, action):
+        """
+        action ∈ [0,1] → normalized throttle
+        """
+        action = float(np.clip(action, 0, 1))
+
+        # Convert action to speed
+        self.speed = action * self.max_speed
+
+        # Weather + traffic reduce speed
+        weather_factor = self.WEATHER_MODES[self.weather_mode]
+        effective_speed = self.speed * weather_factor * (1 - self.traffic_factor)
+
+        # Reduce distance
+        self.distance_remaining -= effective_speed * 0.1
+        self.distance_remaining = max(self.distance_remaining, 0)
+
+        # Battery consumption
+        self.battery_level -= (self.speed / self.max_speed) * 2.0
+        self.battery_level = max(self.battery_level, 0)
+
+        # DONE CONDITIONS
+        done = False
+        reward = 0.0
+
+        # Reward for progress
+        reward += (effective_speed / self.max_speed) * 0.1
+
+        # Penalty if battery low
+        if self.battery_level <= 0:
+            done = True
+            reward -= 1.0
+        # Goal reached
+        elif self.distance_remaining <= 0:
+            done = True
+            reward += 1.0
+
+        return self._get_obs(), float(reward), done, {}
