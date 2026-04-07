@@ -9,7 +9,6 @@ class HardEVEnv(BaseEVModel):
             battery_capacity=100,
             max_speed=60,
             traffic_factor=0.25,
-            total_distance=120
         )
 
     def step(self, action):

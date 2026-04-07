@@ -7,5 +7,5 @@ class MediumEVEnv(BaseEVModel):
             battery_capacity=80,
             max_speed=70,
             traffic_factor=0.15,
-            total_distance=50
+            
         )
