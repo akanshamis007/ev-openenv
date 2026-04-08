@@ -1,55 +1,73 @@
-from easy_ev_env import EasyEVEnv
-from medium_ev_env import MediumEVEnv
-from hard_ev_env import HardEVEnv
+import os
+import time
+import numpy as np
+from graders import ProgressRewardGrader, SafetyPenaltyGrader, BalancedGrader
+
+from environments.easy_env import EasyEVEnv
+from environments.medium_env import MediumEVEnv
+from environments.hard_env import HardEVEnv
+
+MAX_STEPS = 100
 
 
-# ---------------------------------------------------------
-#      ENV FACTORY
-# ---------------------------------------------------------
-def load_model(env_name: str):
-    """
-    env_name: 'easy' | 'medium' | 'hard'
-    returns: env instance
-    """
-    env_name = env_name.lower()
+def run_episode(env, grader, task_name, env_name):
+    print(f"[START] task={task_name} env={env_name} model=baseline", flush=True)
 
-    if env_name == "easy":
-        return EasyEVEnv()
-    elif env_name == "medium":
-        return MediumEVEnv()
-    elif env_name == "hard":
-        return HardEVEnv()
-    else:
-        raise ValueError("Invalid environment name. Use: easy, medium, hard.")
+    obs = env.reset()
+    rewards_log = []
+    steps_taken = 0
+    error_msg = "null"
+
+    for step in range(1, MAX_STEPS + 1):
+        # Simple agent → throttle proportional to remaining distance
+        throttle = float(min(1.0, obs[2] / 100))
+
+        try:
+            obs, reward, done, info = env.step([throttle])
+        except Exception as e:
+            error_msg = str(e)
+            break
+
+        graded_reward = grader.compute(reward, obs, done)
+        rewards_log.append(graded_reward)
+        steps_taken = step
+
+        print(
+            f"[STEP] step={step} action={throttle:.2f} reward={graded_reward:.2f} "
+            f"done={str(done).lower()} error=null",
+            flush=True
+        )
+
+        if done:
+            break
+
+    score = float(sum(rewards_log))
+    score = max(0.0, min(1.0, score))  # clamp
+
+    print(
+        f"[END] success={str(score >= 0.1).lower()} steps={steps_taken} "
+        f"score={score:.3f} rewards={','.join(f'{r:.2f}' for r in rewards_log)}",
+        flush=True
+    )
 
 
-# ---------------------------------------------------------
-#      PREDICT FUNCTION
-# ---------------------------------------------------------
-def predict(env, action: float):
-    """
-    Runs a single step of the EV environment.
-    action: float (0–1)
-    returns dict: {observation, reward, done}
-    """
-    obs, reward, done, truncated, info = env.step([action])
-
-    return {
-        "observation": obs.tolist(),
-        "reward": float(reward),
-        "done": bool(done)
+if __name__ == "__main__":
+    # Define environments
+    envs = {
+        "easy": EasyEVEnv(),
+        "medium": MediumEVEnv(),
+        "hard": HardEVEnv(),
     }
 
+    # Define graders
+    graders = {
+        "progress": ProgressRewardGrader(),
+        "safety": SafetyPenaltyGrader(),
+        "balanced": BalancedGrader(),
+    }
 
-# ---------------------------------------------------------
-#      TEST EXECUTION (used by HF eval)
-# ---------------------------------------------------------
-if __name__ == "__main__":
-    # choose which env to test
-    env = load_model("easy")    # change to "medium" or "hard"
-    
-    obs, _ = env.reset()
-    print("Initial Observation:", obs)
-
-    result = predict(env, 0.5)
-    print("After Step:", result)
+    # Run all combos
+    for env_name, env in envs.items():
+        for grader_name, grader in graders.items():
+            task_name = f"{env_name}-{grader_name}"
+            run_episode(env, grader, task_name, env_name)
