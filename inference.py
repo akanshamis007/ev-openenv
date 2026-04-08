@@ -1,73 +1,127 @@
 import os
+import json
 import time
-import numpy as np
-from graders import ProgressRewardGrader, SafetyPenaltyGrader, BalancedGrader
+from openai import OpenAI
+import requests
+import yaml
 
-from environments.easy_env import EasyEVEnv
-from environments.medium_env import MediumEVEnv
-from environments.hard_env import HardEVEnv
+# ============================================================
+# Load ENV VARS (MANDATORY for validator)
+# ============================================================
 
-MAX_STEPS = 100
+API_BASE_URL = os.getenv("API_BASE_URL")
+MODEL_NAME   = os.getenv("MODEL_NAME")
+HF_TOKEN     = os.getenv("HF_TOKEN")
+
+if not API_BASE_URL or not MODEL_NAME or not HF_TOKEN:
+    raise RuntimeError("Missing required environment variables: API_BASE_URL, MODEL_NAME, HF_TOKEN")
+
+# OpenAI client
+client = OpenAI(
+    api_key=HF_TOKEN,
+    base_url=API_BASE_URL
+)
+
+# ============================================================
+# Load tasks from openenv.yaml
+# ============================================================
+
+with open("openenv.yaml", "r") as f:
+    spec = yaml.safe_load(f)
+
+TASKS = [t["id"] for t in spec.get("tasks", [])]
+ENV_URL = "http://localhost:7860"     # HF Space server internal URL
+
+# ============================================================
+# Helper: call the environment endpoints
+# ============================================================
+
+def env_reset():
+    r = requests.post(f"{ENV_URL}/reset")
+    return r.json()
+
+def env_state():
+    r = requests.get(f"{ENV_URL}/state")
+    return r.json()
+
+def env_step(action):
+    r = requests.post(f"{ENV_URL}/step", json={"action": action})
+    return r.json()
+
+# ============================================================
+# Helper: Ask LLM for action
+# ============================================================
+
+def llm_action(observation):
+    """Query LLM to choose an action"""
+    try:
+        msg = [
+            {"role": "system", "content": "You are a reinforcement learning agent. Respond ONLY with an integer action."},
+            {"role": "user", "content": f"Observation: {json.dumps(observation)}. Give next action:"}
+        ]
+
+        out = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=msg,
+            temperature=0
+        )
+
+        ans = out.choices[0].message.content.strip()
+
+        # Convert to integer safely
+        return int(ans)
+
+    except Exception:
+        return 0   # Fallback safe action
 
 
-def run_episode(env, grader, task_name, env_name):
-    print(f"[START] task={task_name} env={env_name} model=baseline", flush=True)
+# ============================================================
+# MAIN LOOP FOR ALL TASKS
+# ============================================================
 
-    obs = env.reset()
-    rewards_log = []
-    steps_taken = 0
-    error_msg = "null"
+def run_task(task_id):
 
-    for step in range(1, MAX_STEPS + 1):
-        # Simple agent → throttle proportional to remaining distance
-        throttle = float(min(1.0, obs[2] / 100))
+    # Start log
+    print(f'[START] {json.dumps({"task_id": task_id})}', flush=True)
 
-        try:
-            obs, reward, done, info = env.step([throttle])
-        except Exception as e:
-            error_msg = str(e)
-            break
+    obs = env_reset()
+    done = False
+    total_reward = 0.0
+    step_count = 0
 
-        graded_reward = grader.compute(reward, obs, done)
-        rewards_log.append(graded_reward)
-        steps_taken = step
+    while not done:
+        action = llm_action(obs)
+        result = env_step(action)
 
+        obs = result.get("observation", obs)
+        reward = float(result.get("reward", 0))
+        done = bool(result.get("done", False))
+
+        total_reward += reward
+        step_count += 1
+
+        # STEP LOG (required)
         print(
-            f"[STEP] step={step} action={throttle:.2f} reward={graded_reward:.2f} "
-            f"done={str(done).lower()} error=null",
+            f'[STEP] {json.dumps({"observation": obs, "action": action, "reward": reward})}',
             flush=True
         )
 
-        if done:
+        # Safety break if env misconfigured
+        if step_count > 1000:
             break
 
-    score = float(sum(rewards_log))
-    score = max(0.0, min(1.0, score))  # clamp
-
+    # END LOG (required)
     print(
-        f"[END] success={str(score >= 0.1).lower()} steps={steps_taken} "
-        f"score={score:.3f} rewards={','.join(f'{r:.2f}' for r in rewards_log)}",
+        f'[END] {json.dumps({"task_id": task_id, "score": total_reward})}',
         flush=True
     )
 
 
+# ============================================================
+# RUN ALL TASKS SEQUENTIALLY
+# ============================================================
+
 if __name__ == "__main__":
-    # Define environments
-    envs = {
-        "easy": EasyEVEnv(),
-        "medium": MediumEVEnv(),
-        "hard": HardEVEnv(),
-    }
-
-    # Define graders
-    graders = {
-        "progress": ProgressRewardGrader(),
-        "safety": SafetyPenaltyGrader(),
-        "balanced": BalancedGrader(),
-    }
-
-    # Run all combos
-    for env_name, env in envs.items():
-        for grader_name, grader in graders.items():
-            task_name = f"{env_name}-{grader_name}"
-            run_episode(env, grader, task_name, env_name)
+    for tid in TASKS:
+        run_task(tid)
+        time.sleep(1)
