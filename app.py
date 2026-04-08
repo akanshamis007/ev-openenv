@@ -1,33 +1,84 @@
+import json
 from fastapi import FastAPI
+from pydantic import BaseModel
+import uvicorn
+import gradio as gr
+
+# Import environments
 from environments.easy_env import EasyEVEnv
 from environments.medium_env import MediumEVEnv
 from environments.hard_env import HardEVEnv
 
 app = FastAPI()
 
-def get_env(name):
-    if name == "easy": return EasyEVEnv()
-    if name == "medium": return MediumEVEnv()
-    if name == "hard": return HardEVEnv()
-    raise ValueError("Unknown environment")
+# Active environment
+ENV = EasyEVEnv()
 
-@app.get("/")
-def index():
-    return {"message": "EV Routing RL Environment Ready", "envs": ["easy","medium","hard"]}
+# --------------------------
+# API SCHEMA
+# --------------------------
+class ActionRequest(BaseModel):
+    action: float
 
-@app.get("/reset/{env_name}")
-def reset(env_name: str):
-    env = get_env(env_name)
-    obs = env.reset()
-    return {"obs": obs.tolist()}
+# --------------------------
+# API ROUTES REQUIRED BY OPENENV
+# --------------------------
 
-@app.get("/step/{env_name}/{action}")
-def step(env_name: str, action: float):
-    env = get_env(env_name)
-    obs, reward, done, info = env.step(action)
+@app.post("/reset")
+def reset_env():
+    obs = ENV.reset()
+    return {"observation": obs}
+
+@app.post("/step")
+def step_env(req: ActionRequest):
+    obs, reward, done, info = ENV.step(req.action)
     return {
-        "obs": obs.tolist(),
+        "observation": obs,
         "reward": reward,
-        "done": done
+        "done": done,
+        "info": info
     }
+
+@app.get("/state")
+def state_env():
+    return {
+        "speed": ENV.speed,
+        "battery": ENV.battery,
+        "distance": ENV.distance,
+        "weather": ENV.weather_mode
+    }
+
+# --------------------------
+# GRADIO GUI
+# --------------------------
+
+def gui_reset():
+    obs = ENV.reset()
+    return f"Reset Successful.\nObservation:\n{obs}"
+
+def gui_step(action):
+    obs, reward, done, info = ENV.step(float(action))
+    return f"Observation: {obs}\nReward: {reward}\nDone: {done}"
+
+with gr.Blocks() as demo:
+    gr.Markdown("# EV OpenEnv GUI")
+
+    reset_btn = gr.Button("Reset")
+    out1 = gr.Textbox(label="Output")
+
+    reset_btn.click(fn=gui_reset, outputs=out1)
+
+    action = gr.Slider(0, 1, step=0.1, label="Action (Throttle)")
+    step_btn = gr.Button("Step")
+
+    step_btn.click(fn=gui_step, inputs=action, outputs=out1)
+
+# Integrate GUI with FastAPI
+app = gr.mount_gradio_app(app, demo, path="/")
+
+# --------------------------
+# STARTUP
+# --------------------------
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=7860)
 
