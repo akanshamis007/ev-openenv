@@ -1,12 +1,12 @@
 import os
 import json
 import time
-from openai import OpenAI
-import requests
 import yaml
+import requests
+from openai import OpenAI
 
 # ============================================================
-# Load ENV VARS (MANDATORY for validator)
+# Load Required Env Vars
 # ============================================================
 
 API_BASE_URL = os.getenv("API_BASE_URL")
@@ -14,114 +14,132 @@ MODEL_NAME   = os.getenv("MODEL_NAME")
 HF_TOKEN     = os.getenv("HF_TOKEN")
 
 if not API_BASE_URL or not MODEL_NAME or not HF_TOKEN:
-    raise RuntimeError("Missing required environment variables: API_BASE_URL, MODEL_NAME, HF_TOKEN")
+    raise RuntimeError("Missing required environment variables API_BASE_URL / MODEL_NAME / HF_TOKEN")
 
-# OpenAI client
 client = OpenAI(
     api_key=HF_TOKEN,
     base_url=API_BASE_URL
 )
 
 # ============================================================
-# Load tasks from openenv.yaml
+# Load openenv.yaml Task List
 # ============================================================
 
 with open("openenv.yaml", "r") as f:
     spec = yaml.safe_load(f)
 
-TASKS = [t["id"] for t in spec.get("tasks", [])]
-ENV_URL = "http://localhost:7860"     # HF Space server internal URL
+TASKS = spec.get("tasks", [])
+
+ENV_URL = "http://localhost:7860"
 
 # ============================================================
-# Helper: call the environment endpoints
+# Environment API
 # ============================================================
 
-def env_reset():
-    r = requests.post(f"{ENV_URL}/reset")
-    return r.json()
-
-def env_state():
-    r = requests.get(f"{ENV_URL}/state")
+def env_reset(env_id):
+    r = requests.post(f"{ENV_URL}/reset", json={"env_id": env_id})
+    r.raise_for_status()
     return r.json()
 
 def env_step(action):
     r = requests.post(f"{ENV_URL}/step", json={"action": action})
+    r.raise_for_status()
+    return r.json()
+
+def env_state():
+    r = requests.get(f"{ENV_URL}/state")
+    r.raise_for_status()
     return r.json()
 
 # ============================================================
-# Helper: Ask LLM for action
+# Ask LLM for Action
 # ============================================================
 
 def llm_action(observation):
-    """Query LLM to choose an action"""
-    try:
-        msg = [
-            {"role": "system", "content": "You are a reinforcement learning agent. Respond ONLY with an integer action."},
-            {"role": "user", "content": f"Observation: {json.dumps(observation)}. Give next action:"}
-        ]
+    msg = [
+        {"role": "system",
+         "content": "You are an RL agent. Output only a float in [0,1]. Nothing else."},
+        {"role": "user",
+         "content": f"Observation: {json.dumps(observation)}. Give next action:"}
+    ]
 
+    try:
         out = client.chat.completions.create(
             model=MODEL_NAME,
             messages=msg,
             temperature=0
         )
-
         ans = out.choices[0].message.content.strip()
-
-        # Convert to integer safely
-        return int(ans)
-
-    except Exception:
-        return 0   # Fallback safe action
-
+        return float(ans)
+    except:
+        return 0.0
 
 # ============================================================
-# MAIN LOOP FOR ALL TASKS
+# Task Loop
 # ============================================================
 
-def run_task(task_id):
+def run_task(task):
 
-    # Start log
-    print(f'[START] {json.dumps({"task_id": task_id})}', flush=True)
+    task_id = task["id"]
+    env_id  = task["env"]
 
-    obs = env_reset()
+    # --------------------
+    # START BLOCK
+    # --------------------
+    print("[START]")
+    print(f"task: {task_id}")
+    print(f"env: {env_id}")
+    print(f"model: {MODEL_NAME}")
+    print("metadata: {}")
+    print("", flush=True)
+
+    obs = env_reset(env_id)
     done = False
     total_reward = 0.0
-    step_count = 0
+    step_num = 0
 
     while not done:
+
         action = llm_action(obs)
+
         result = env_step(action)
 
         obs = result.get("observation", obs)
-        reward = float(result.get("reward", 0))
+        reward = float(result.get("reward", 0.0))
         done = bool(result.get("done", False))
 
         total_reward += reward
-        step_count += 1
+        step_num += 1
 
-        # STEP LOG (required)
-        print(
-            f'[STEP] {json.dumps({"observation": obs, "action": action, "reward": reward})}',
-            flush=True
-        )
+        # --------------------
+        # STEP BLOCK
+        # --------------------
+        print("[STEP]")
+        print(f"step: {step_num}")
+        print(f"action: {action}")
+        print(f"reward: {reward}")
+        print(f"done: {str(done).lower()}")
+        print(f"observation: {json.dumps(obs)}")
+        print("", flush=True)
 
-        # Safety break if env misconfigured
-        if step_count > 1000:
+        if step_num > 1000:
             break
 
-    # END LOG (required)
-    print(
-        f'[END] {json.dumps({"task_id": task_id, "score": total_reward})}',
-        flush=True
-    )
+    # --------------------
+    # END BLOCK
+    # --------------------
+    print("[END]")
+    print(f"task: {task_id}")
+    print(f"env: {env_id}")
+    print(f"score: {total_reward}")
+    print("", flush=True)
 
 
 # ============================================================
-# RUN ALL TASKS SEQUENTIALLY
+# RUN ALL TASKS
 # ============================================================
 
 if __name__ == "__main__":
-    for tid in TASKS:
-        run_task(tid)
+    for task in TASKS:
+        run_task(task)
         time.sleep(1)
